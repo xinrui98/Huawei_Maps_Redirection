@@ -7,21 +7,18 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.icu.text.UnicodeSet.EMPTY
-import android.location.Geocoder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.huawei.hmf.tasks.OnSuccessListener
-import com.huawei.hms.framework.common.StringUtils
 import com.huawei.hms.location.*
 import com.huawei.hms.maps.*
 import com.huawei.hms.maps.model.*
-import java.io.IOException
 import java.util.*
 
 
@@ -33,7 +30,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         private const val TAG = "MapViewDemoActivity"
         private const val MAPVIEW_BUNDLE_KEY = "MapViewBundleKey"
         private const val REQUEST_CODE = 100
-        private var MY_LAT_LNG = LatLng(1.3840, 103.7470)
         private val RUNTIME_PERMISSIONS = arrayOf(
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
             Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -44,7 +40,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var hmap: HuaweiMap
     private lateinit var mMapView: MapView
     private var mMarker: Marker? = null
-    private var mCircle: Circle? = null
+    private var destinationLatLng: LatLng? = null
+    private var currentLatLng = LatLng(1.3840, 103.7470) //static value for starting camera position
+
+
 
     private lateinit var mFusedLocationProviderClient: FusedLocationProviderClient
 
@@ -57,6 +56,19 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             ActivityCompat.requestPermissions(this, RUNTIME_PERMISSIONS, REQUEST_CODE)
         }
 
+
+        val fab: View = findViewById(R.id.getDirectionsButton)
+        fab.setOnClickListener { view ->
+            // Re-direct to Petal Maps
+            val uriString =
+                "mapapp://navigation?saddr=${currentLatLng.latitude},${currentLatLng.longitude}&daddr=${destinationLatLng?.latitude},${destinationLatLng?.longitude}&language=en&type=walk"
+
+            val content_url: Uri = Uri.parse(uriString)
+            val intent = Intent(Intent.ACTION_VIEW, content_url)
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+            }
+        }
 
         // get mapView by layout view
         mMapView = findViewById(R.id.mapView)
@@ -94,7 +106,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                     TAG,
                     "getLastLocation onSuccess location[Longitude,Latitude]:${location.longitude},${location.latitude}"
                 )
-                MY_LAT_LNG = LatLng(location.latitude, location.longitude)
+                currentLatLng = LatLng(location.latitude, location.longitude)
 
                 return@OnSuccessListener
             }).addOnFailureListener { e ->
@@ -105,28 +117,28 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-
-    private fun getAddressFromLocation(latitude: Double, longitude: Double): String {
-        val geocoder = Geocoder(this, Locale.ENGLISH)
-        var final_address = ""
-        try {
-            val addresses = geocoder.getFromLocation(latitude, longitude, 1)
-            if (addresses.size > 0) {
-                val fetchedAddress = addresses[0]
-                Log.v(TAG, "Reverse geocoding address number: ${addresses[0]}")
-//                final_address += "${fetchedAddress.subAdminArea} ${fetchedAddress.postalCode}"
-                final_address += fetchedAddress.postalCode
-                return final_address
-
-            } else {
-                Log.e(TAG, "No address found")
-
-            }
-        } catch (e: IOException) {
-            e.printStackTrace()
-        }
-        return ""
-    }
+// NOT IN USE
+//    private fun getAddressFromLocation(latitude: Double, longitude: Double): String {
+//        val geocoder = Geocoder(this, Locale.ENGLISH)
+//        var final_address = ""
+//        try {
+//            val addresses = geocoder.getFromLocation(latitude, longitude, 1)
+//            if (addresses.size > 0) {
+//                val fetchedAddress = addresses[0]
+//                Log.v(TAG, "Reverse geocoding address number: ${addresses[0]}")
+////                final_address += "${fetchedAddress.subAdminArea} ${fetchedAddress.postalCode}"
+//                final_address += fetchedAddress.postalCode
+//                return final_address
+//
+//            } else {
+//                Log.e(TAG, "No address found")
+//
+//            }
+//        } catch (e: IOException) {
+//            e.printStackTrace()
+//        }
+//        return ""
+//    }
 
 
     override fun onStart() {
@@ -154,46 +166,40 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         hmap.isMyLocationEnabled = true
         hmap.uiSettings.isMyLocationButtonEnabled = true
 
-        // move camera by CameraPosition param ,latlag and zoom params can set here
-        val build = CameraPosition.Builder().target(MY_LAT_LNG).zoom(15f).build()
+        // move camera by CameraPosition param latlag and zoom params can set here
+        val build = CameraPosition.Builder().target(currentLatLng).zoom(15f).build()
 
         val cameraUpdate = CameraUpdateFactory.newCameraPosition(build)
         hmap.animateCamera(cameraUpdate)
-        //onLongPress latlng
-        hmap.setOnMapLongClickListener { latLng ->
-            Toast.makeText(
-                applicationContext,
-                "onMapLongClick:$latLng",
-                Toast.LENGTH_SHORT
-            ).show()
-//            val myCurrentAddress = getAddressFromLocation(MY_LAT_LNG.latitude, MY_LAT_LNG.longitude)
-//            val destinationAddress = getAddressFromLocation(latLng.latitude, latLng.longitude)
-//            Log.v(TAG, "my current address: ${myCurrentAddress}")
-//            Log.v(TAG, "my current address: ${destinationAddress}")
 
-//            Re-direct to Petal Maps
-            val uriString =
-                "mapapp://navigation?saddr=${MY_LAT_LNG.latitude},${MY_LAT_LNG.longitude}&daddr=${latLng.latitude},${latLng.longitude}&language=en&type=walk"
-
-            val content_url: Uri = Uri.parse(uriString)
-            val intent = Intent(Intent.ACTION_VIEW, content_url)
-            if (intent.resolveActivity(packageManager) != null) {
-                startActivity(intent)
-            }
+        hmap.setOnMapClickListener { latLng->
+            destinationLatLng = latLng
+            Log.d("DESTINATION LAT LNG", "destination lat lng : ${destinationLatLng}")
+            mMarker = hmap.addMarker(MarkerOptions().position(destinationLatLng)
+                .icon(BitmapDescriptorFactory.fromResource(R.drawable.marker))
+                .clusterable(true))
+            mMarker?.showInfoWindow()
         }
+        //NOT IN USE
+        //onLongPress latlng
+//        hmap.setOnMapLongClickListener { latLng ->
+//            Toast.makeText(
+//                applicationContext,
+//                "onMapLongClick:$latLng",
+//                Toast.LENGTH_SHORT
+//            ).show()
+//
+////            Re-direct to Petal Maps
+//            val uriString =
+//                "mapapp://navigation?saddr=${currentLatLng.latitude},${currentLatLng.longitude}&daddr=${latLng.latitude},${latLng.longitude}&language=en&type=walk"
+//
+//            val content_url: Uri = Uri.parse(uriString)
+//            val intent = Intent(Intent.ACTION_VIEW, content_url)
+//            if (intent.resolveActivity(packageManager) != null) {
+//                startActivity(intent)
+//            }
+//        }
 
-//        hmap.setMaxZoomPreference(5f)
-//        hmap.setMinZoomPreference(2f)
-
-        // mark can be add by HuaweiMap
-//        mMarker = hmap.addMarker(MarkerOptions().position(LAT_LNG)
-//                .icon(BitmapDescriptorFactory.fromResource(R.drawable.badge_ph))
-//                .clusterable(true))
-//        mMarker?.showInfoWindow()
-
-        // circle can be add by HuaweiMap
-//        mCircle = hmap.addCircle(CircleOptions().center(LatLng(1.3840, 103.7470)).radius(50.0).fillColor(Color.GREEN))
-//        mCircle?.fillColor = Color.TRANSPARENT
     }
 
     override fun onPause() {
